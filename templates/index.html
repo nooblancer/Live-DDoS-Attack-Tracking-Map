@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDoS Attack Tracking Map</title>
+
+    <!-- JetBrains Mono Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <!-- Application Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Globe.gl 3D Container -->
+    <div id="globe-container"></div>
+
+    <!-- Model Unavailable Notice (hidden by default) -->
+    <div id="model-notice" class="model-notice" hidden>
+        <span class="notice-icon">⚠</span>
+        <span>ML prediction model unavailable — threat feed visualization only</span>
+    </div>
+
+    <!-- Statistics Panel Overlay -->
+    <div id="stats-panel" class="stats-panel">
+        <h2 class="stats-title">Attack Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <span class="stat-label">Total IPs</span>
+                <span id="total-ips" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Countries</span>
+                <span id="countries" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Attacks (1h)</span>
+                <span id="attacks-last-hour" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Latest</span>
+                <span id="latest-timestamp" class="stat-value">—</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timeline Chart Container -->
+    <div id="timeline-chart" class="timeline-chart">
+        <h3 class="timeline-title">Attack Timeline (24h)</h3>
+        <div class="timeline-bars"></div>
+    </div>
+
+    <!-- Live Event Feed Panel -->
+    <div id="event-feed" class="event-feed">
+        <h3 class="feed-title">Live Feed</h3>
+        <ul class="feed-list"></ul>
+    </div>
+
+    <!-- Globe.gl Library (CDN) -->
+    <script src="https://unpkg.com/globe.gl"></script>
+
+    <!-- Application Script -->
+    <script src="/static/js/globe.js"></script>
+</body>
+</html>

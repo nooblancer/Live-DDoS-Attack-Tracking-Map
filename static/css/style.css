@@ -1,0 +1,210 @@
+/* DDoS Attack Tracking Map — Cyberpunk Theme */
+
+:root {
+    --bg-primary: #000000;
+    --accent: #00FF41;
+    --accent-dim: rgba(0, 255, 65, 0.6);
+    --accent-glow: rgba(0, 255, 65, 0.15);
+    --panel-bg: rgba(0, 0, 0, 0.85);
+    --panel-border: rgba(0, 255, 65, 0.4);
+    --text-primary: #00FF41;
+    --text-muted: rgba(0, 255, 65, 0.7);
+    --font-stack: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Reset and base */
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-stack);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* Globe container — full viewport */
+#globe-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+}
+
+/* Model unavailable notice banner */
+.model-notice {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 8px 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.model-notice[hidden] {
+    display: none;
+}
+
+.notice-icon {
+    color: var(--accent);
+}
+
+/* Statistics panel overlay */
+.stats-panel {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 10;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 16px;
+    min-width: 200px;
+}
+
+.stats-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stats-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.stat-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+/* Timeline chart — bottom overlay */
+.timeline-chart {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+    z-index: 10;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 12px 16px;
+    max-height: 140px;
+}
+
+.timeline-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.timeline-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 80px;
+}
+
+.timeline-bars .bar {
+    flex: 1;
+    background: var(--accent);
+    min-width: 4px;
+    opacity: 0.8;
+}
+
+/* Live event feed panel */
+.event-feed {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 12px 16px;
+    width: 280px;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.feed-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.feed-list {
+    list-style: none;
+}
+
+.feed-list li {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(0, 255, 65, 0.1);
+}
+
+.feed-list li:last-child {
+    border-bottom: none;
+}
+
+/* Tooltip styling (for Globe.gl marker clicks) */
+.globe-tooltip {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 8px 12px;
+    font-family: var(--font-stack);
+    font-size: 11px;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+/* Scrollbar styling for event feed */
+.event-feed::-webkit-scrollbar {
+    width: 4px;
+}
+
+.event-feed::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.event-feed::-webkit-scrollbar-thumb {
+    background: var(--panel-border);
+}

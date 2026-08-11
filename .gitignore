@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Runtime artifacts
+attacks.db
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# ML artifacts (large binary files)
+*.joblib
+models/metadata.json
+
+# Data (large datasets, not tracked)
+data/
+
+# Hypothesis test database
+.hypothesis/
+
+# Test / coverage
+.pytest_cache/
+htmlcov/
+.coverage
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Kiro spec internals
+.kiro/

@@ -1,0 +1,36 @@
+# Web framework and server
+fastapi==0.115.6
+uvicorn==0.34.0
+jinja2==3.1.4
+
+# Database
+aiosqlite==0.20.0
+
+# HTTP client
+httpx==0.28.1
+
+# Server-Sent Events
+sse-starlette==2.2.1
+
+# Background scheduling
+apscheduler==3.10.4
+
+# Data processing
+pandas==2.2.3
+numpy==1.26.4
+
+# Machine learning
+scikit-learn==1.6.0
+xgboost==2.1.3
+joblib==1.4.2
+
+# Configuration
+python-dotenv==1.0.1
+pydantic==2.10.4
+
+# Testing
+hypothesis==6.119.3
+pytest==8.3.4
+pytest-asyncio==0.25.0
+pytest-cov==6.0.0
+pytest-httpx==0.36.2
