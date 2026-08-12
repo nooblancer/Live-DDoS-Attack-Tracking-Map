@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHANGELOG // DDoS Threat Intelligence Center</title>
+
+    <!-- JetBrains Mono Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-primary: #0a0f0a;
+            --bg-panel: #0d140d;
+            --color-primary: #00FF41;
+            --color-secondary: #00E5FF;
+            --color-warn: #FFD700;
+            --color-error: #FF0040;
+            --text-dim: rgba(0, 255, 65, 0.5);
+            --border-primary: rgba(0, 255, 65, 0.25);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-primary);
+            color: var(--color-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* CRT scanlines */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.03) 0px,
+                rgba(0, 0, 0, 0.03) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        /* Flicker */
+        @keyframes flicker {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.98; }
+            73% { opacity: 0.97; }
+        }
+        body { animation: flicker 4s infinite; }
+
+        /* Header */
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border-primary);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-title {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-shadow: 0 0 5px #00FF41, 0 0 10px #00FF4180;
+        }
+
+        .back-btn {
+            text-decoration: none;
+            color: var(--color-secondary);
+            font-size: 12px;
+            padding: 4px 12px;
+            border: 1px solid var(--color-secondary);
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+        .back-btn:hover {
+            background: rgba(0, 229, 255, 0.1);
+            text-shadow: 0 0 8px var(--color-secondary);
+        }
+
+        /* Terminal container */
+        .terminal {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .terminal-prompt {
+            color: var(--text-dim);
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+
+        .terminal-output {
+            margin-bottom: 40px;
+        }
+
+        /* Version entry */
+        .version-entry {
+            border-left: 2px solid var(--border-primary);
+            padding: 16px 0 16px 20px;
+            margin-left: 8px;
+            position: relative;
+        }
+
+        .version-entry::before {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 20px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            box-shadow: 0 0 6px var(--color-primary);
+        }
+
+        .version-entry.latest::before {
+            background: var(--color-secondary);
+            box-shadow: 0 0 8px var(--color-secondary), 0 0 16px var(--color-secondary);
+        }
+
+        .version-header {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .version-tag {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--color-primary);
+            text-shadow: 0 0 5px #00FF41;
+        }
+
+        .version-entry.latest .version-tag {
+            color: var(--color-secondary);
+            text-shadow: 0 0 5px var(--color-secondary);
+        }
+
+        .version-date {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .version-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--color-warn);
+            margin-bottom: 8px;
+        }
+
+        .version-body {
+            font-size: 12px;
+            color: rgba(0, 255, 65, 0.75);
+        }
+
+        .version-body ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .version-body li {
+            padding: 2px 0;
+        }
+
+        .version-body li::before {
+            content: '> ';
+            color: var(--text-dim);
+        }
+
+        .tag {
+            display: inline-block;
+            font-size: 9px;
+            padding: 1px 6px;
+            border-radius: 2px;
+            margin-left: 6px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .tag-feature { background: rgba(0, 229, 255, 0.15); color: var(--color-secondary); border: 1px solid rgba(0, 229, 255, 0.3); }
+        .tag-ml { background: rgba(155, 89, 182, 0.15); color: #9B59B6; border: 1px solid rgba(155, 89, 182, 0.3); }
+        .tag-infra { background: rgba(255, 140, 0, 0.15); color: #FF8C00; border: 1px solid rgba(255, 140, 0, 0.3); }
+        .tag-ui { background: rgba(255, 215, 0, 0.15); color: #FFD700; border: 1px solid rgba(255, 215, 0, 0.3); }
+        .tag-perf { background: rgba(0, 255, 65, 0.15); color: var(--color-primary); border: 1px solid rgba(0, 255, 65, 0.3); }
+
+        /* ASCII art header */
+        .ascii-header {
+            color: var(--color-primary);
+            font-size: 10px;
+            line-height: 1.2;
+            margin-bottom: 24px;
+            opacity: 0.7;
+            white-space: pre;
+        }
+
+        .blink {
+            animation: blink-cursor 1s step-end infinite;
+        }
+        @keyframes blink-cursor {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .terminal { padding: 16px; }
+            .version-header { flex-direction: column; gap: 4px; }
+            .ascii-header { font-size: 7px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <span class="header-title">CHANGELOG // SYSTEM LOGS</span>
+        <a href="/" class="back-btn">&larr; DASHBOARD</a>
+    </header>
+
+    <div class="terminal">
+        <div class="ascii-header">
+ ____  ____        _____   _____ _                    _
+|  _ \|  _ \  ___ / ____| |_   _| |__  _ __ ___  __ _| |_
+| | | | | | |/ _ \\___ \    | | | '_ \| '__/ _ \/ _` | __|
+| |_| | |_| | (_) |___) |   | | | | | | | |  __/ (_| | |_
+|____/|____/ \___/_____/    |_| |_| |_|_|  \___|\__,_|\__|
+  ___ _   _ _____ _____ _     _     ___ ____ _____ _   _  ____ _____
+ |_ _| \ | |_   _| ____| |   | |   |_ _/ ___| ____| \ | |/ ___| ____|
+  | ||  \| | | | |  _| | |   | |    | | |  _|  _| |  \| | |   |  _|
+  | || |\  | | | | |___| |___| |___ | | |_| | |___| |\  | |___| |___
+ |___|_| \_| |_| |_____|_____|_____|___\____|_____|_| \_|\____|_____|
+        </div>
+
+        <div class="terminal-prompt">root@ddos-tracker:~$ cat /var/log/changelog.log</div>
+        <div class="terminal-prompt" style="margin-bottom: 24px;">--- Displaying 10 entries ---<span class="blink">_</span></div>
+
+        <div class="terminal-output">
+
+            <!-- v2.0.0 -->
+            <div class="version-entry latest">
+                <div class="version-header">
+                    <span class="version-tag">v2.0.0</span>
+                    <span class="version-date">2025-09-01</span>
+                    <span class="tag tag-feature">MAJOR</span>
+                </div>
+                <div class="version-title">SOC War Room Command Center — Full Release</div>
+                <div class="version-body">
+                    <ul>
+                        <li>Multi-panel SOC dashboard with CRT terminal aesthetics</li>
+                        <li>12-class XGBoost classifier trained on real CIC-DDoS2019 data</li>
+                        <li>Dual data streams: historical replay + live threat intelligence</li>
+                        <li>Globe.gl 3D visualization with color-coded arcs and impact rings</li>
+                        <li>6 real-time panels: globe, stats grid, attack log, top attackers, timeline, model card</li>
+                        <li>17 property-based tests (Hypothesis) validating correctness properties</li>
+                        <li>270 total tests passing, full backward compatibility with v1</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- v1.9.0 -->
+            <div class="version-entry">
+                <div class="version-header">
+                    <span class="version-tag">v1.9.0</span>
+                    <span class="version-date">2025-08-25</span>
+                    <span class="tag tag-ui">UI</span>
+                </div>
+                <div class="version-title">Frontend Dashboard Redesign</div>
+                <div class="version-body">
+                    <ul>
+                        <li>Redesigned index.html as 6-panel CSS Grid layout</li>
+                        <li>CRT effects: scanlines, phosphor glow, flicker animation</li>
+                        <li>JetBrains Mono typeface, neon green/cyan color scheme</li>
+                        <li>Responsive breakpoint at 1024px with stacked layout</li>
+                        <li>Attack log terminal with 200-entry FIFO and typing cursor</li>
+                        <li>Replay controls with speed selector (1x/10x/100x/1000x)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- v1.8.0 -->
+            <div class="version-entry">
+                <div class="version-header">
+                    <span class="version-tag">v1.8.0</span>
+                    <span class="version-date">2025-08-18</span>
+                    <span class="tag tag-infra">BACKEND</span>
+                </div>
+                <div class="version-title">API Routes and Service Integration</div>
+                <div class="version-body">
+                    <ul>
+                        <li>POST /api/replay/start, /stop and GET /api/replay/status endpoints</li>
+                        <li>GET /api/model-stats, /api/top-attackers, /api/attack-types</li>
+                        <li>Service initialization in main.py with graceful lifecycle management</li>
+                        <li>APScheduler integration for periodic threat refresh and stats persistence</li>
+                        <li>All v1 endpoints preserved — zero breaking changes</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- v1.7.0 -->
+            <div class="version-entry">
+                <div class="version-header">
+                    <span class="version-tag">v1.7.0</span>
+                    <span class="version-date">2025-08-11</span>
+                    <span class="tag tag-feature">FEATURE</span>
+                </div>
+                <div class="version-title">Replay Engine and Enhanced EventBus</div>
+                <div class="version-body">
+                    <ul>
+                        <li>ReplayEngine: streams CIC-DDoS2019 flows at configurable speeds</li>
+                        <li>Rate control with max_events_per_second cap (default 50)</li>
+                        <li>Dataset looping with loops_completed counter</li>
+                        <li>EventBus: bounded queue with drop-oldest overflow policy</li>
+                        <li>Enhanced SSE events with 13 fields + backward-compatible legacy format</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- v1.6.0 -->
+            <div class="version-entry">
+                <div class="version-header">
+                    <span class="version-tag">v1.6.0</span>
+                    <span class="version-date">2025-08-04</span>
+                    <span class="tag tag-infra">BACKEND</span>
+                </div>
+                <div class="version-title">Threat Aggregator — Multi-Source Intelligence</div>
+                <div class="version-body">
+                    <ul>
+                        <li>ThreatAggregator: fetches from AbuseIPDB, FireHOL L1-L3, Feodo Tracker, Emerging Threats</li>
+                        <li>CIDR expansion for /24+ ranges (samples 5-10 IPs per range)</li>
+                        <li>Deduplication: retains highest confidence per unique IP across sources</li>
+                        <li>Graceful failure handling — skip failed sources, continue with rest</li>
+                        <li>Live threat events published to EventBus with source_channel="live"</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- v1.5.0 -->
+            <div class="version-entry">
+                <div class="version-header">
+                    <span class="version-tag">v1.5.0</span>
+                    <span class="version-date">2025-07-28</span>
+                    <span class="tag tag-perf">STATS</span>
+                </div>
+                <div class="version-title">Stats Accumulator and Persistence</div>
+                <div class="version-body">
+                    <ul>
+                        <li>StatsAccumulator: sliding 60s window for predictions/sec calculation</li>
+                        <li>Per-IP attacker tracking with top-20 ranked output</li>
+                        <li>Per-attack-type count breakdown</li>
+                        <li>SQLite persistence and restore across application restarts</li>
+                        <li>IP masking (last 2 octets → "x.x") for privacy</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- v1.4.0 -->
+            <div class="version-entry">
+                <div class="version-header">
+                    <span class="version-tag">v1.4.0</span>
+                    <span class="version-date">2025-07-14</span>
+                    <span class="tag tag-ml">ML</span>
+                </div>
+                <div class="version-title">Multi-Class XGBoost Classifier</div>
+                <div class="version-body">
+                    <ul>
+                        <li>Retrained from binary to 12-class classification on CIC-DDoS2019</li>
+                        <li>Attack types: SYN, UDP, DNS, HTTP, LDAP, NTP, MSSQL, NetBIOS, SSDP, TFTP, UDPLag, WebDDoS</li>
+                        <li>Returns confidence scores, classification time, top 3 features</li>
+                        <li>Graceful degraded mode when model files are missing</li>
+                        <li>Real evaluation metrics: F1=0.63, Precision=0.91 on cross-day test set</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- v1.3.0 -->
+            <div class="version-entry">
+                <div class="version-header">
+                    <span class="version-tag">v1.3.0</span>
+                    <span class="version-date">2025-06-30</span>
+                    <span class="tag tag-feature">FEATURE</span>
+                </div>
+                <div class="version-title">Geographic Coordinate Pools</div>
+                <div class="version-body">
+                    <ul>
+                        <li>32 countries across all continents with 3-5 coordinate pairs each</li>
+                        <li>Weighted selection favoring known botnet-heavy regions</li>
+                        <li>Attack-type regional bias (60% probability for type-specific origins)</li>
+                        <li>Configurable target coordinates via environment variables</li>
+                        <li>Default target: Ashburn, Virginia (US data center hub)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- v1.0.0 -->
+            <div class="version-entry">
+                <div class="version-header">
+                    <span class="version-tag">v1.0.0</span>
+                    <span class="version-date">2025-05-15</span>
+                    <span class="tag tag-feature">RELEASE</span>
+                </div>
+                <div class="version-title">Initial Release — Binary DDoS Detection Globe</div>
+                <div class="version-body">
+                    <ul>
+                        <li>FastAPI backend with SQLite storage and SSE event streaming</li>
+                        <li>Binary XGBoost classifier (Benign vs DDoS) on CIC-DDoS2019</li>
+                        <li>Globe.gl 3D visualization with attack arcs</li>
+                        <li>Geolocation service for IP → coordinates resolution</li>
+                        <li>FireHOL Level 1 threat feed integration</li>
+                        <li>142 passing tests with property-based testing (Hypothesis)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- v0.0 -->
+            <div class="version-entry">
+                <div class="version-header">
+                    <span class="version-tag">v0.0</span>
+                    <span class="version-date">2025-03-01</span>
+                </div>
+                <div class="version-title">Project Inception</div>
+                <div class="version-body">
+                    <ul>
+                        <li>Idea conceived: real-time DDoS attack visualization on a 3D globe</li>
+                        <li>Objective: showcase ML model capabilities with live threat intelligence</li>
+                        <li>Tech stack selected: Python, FastAPI, XGBoost, Globe.gl, CIC-DDoS2019</li>
+                        <li>Repository initialized with project structure and CI skeleton</li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="terminal-prompt">root@ddos-tracker:~$ <span class="blink">_</span></div>
+    </div>
+</body>
+</html>

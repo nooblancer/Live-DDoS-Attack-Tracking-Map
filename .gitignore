@@ -16,18 +16,23 @@ venv/
 .idea/
 
 # Runtime artifacts
-attacks.db
 *.db
 *.db-shm
 *.db-wal
 *.db-journal
 
-# ML artifacts (large binary files)
-*.joblib
-models/metadata.json
+# ML model artifacts (large binary files — regenerate with training script)
+models/ddos_model.joblib
+models/scaler.joblib
+ml/models/multi_class/model.json
+ml/models/multi_class/model.joblib
+ml/models/multi_class/scaler.pkl
 
 # Data (large datasets, not tracked)
-data/
+data/raw/
+data/processed/
+data/attacks.db
+data/*.zip
 
 # Hypothesis test database
 .hypothesis/
@@ -43,3 +48,6 @@ Thumbs.db
 
 # Kiro spec internals
 .kiro/
+
+# Temp/reference files
+_ref_temp/

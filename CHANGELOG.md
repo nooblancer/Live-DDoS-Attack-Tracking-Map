@@ -1,56 +1,104 @@
 # Changelog
 
-## [1.0.0] - 2026-08-12
+All notable changes to this project are documented here.
 
-### Added
+## [2.0.0] — 2025-09-01
 
-**ML Pipeline**
-- Data preprocessing pipeline (`ml/preprocess.py`): CSV loading, column cleaning, inf/NaN removal, deduplication, binary label encoding
-- Feature selection and scaling (`ml/features.py`): 46-feature subset selection, StandardScaler fitting and persistence
-- Model training CLI (`ml/train.py`): Random Forest (balanced) and XGBoost (scale_pos_weight) training, evaluation (precision/recall/F1/ROC-AUC), best-model selection by F1-score
-- Sample data generator (`ml/sample_data.py`): 200-row CSV (100 Benign, 100 DDoS) for development
+### SOC War Room Command Center — Full Release
 
-**Backend Services**
-- Database service (`services/database.py`): async SQLite with upsert semantics, stats, timeline queries
-- Event bus (`services/event_bus.py`): asyncio.Queue-based pub/sub for SSE fanout
-- Geolocation service (`services/geolocation.py`): ip-api.com batch lookups with rate limiting (45 req/min)
-- Model service (`services/model_service.py`): model/scaler loading, inference with graceful degradation
-- Threat feed service (`services/threat_feed.py`): FireHOL blocklist parsing, deduplication, refresh cycle
+- **Multi-panel dashboard**: 6 simultaneous panels (3D globe, stats grid, attack log, top attackers, timeline chart, model card)
+- **12-class XGBoost classifier**: Trained on real CIC-DDoS2019 dataset with cross-day evaluation (F1=0.63, Precision=0.91)
+- **Dual data streams**: Historical dataset replay at configurable speeds + live threat intelligence from 4 sources
+- **Enhanced Globe.gl**: Color-coded arcs by attack type, impact rings, hex-bin heat overlay, 200-arc FIFO cap
+- **CRT terminal aesthetics**: Scanlines, phosphor glow, flicker animation, JetBrains Mono, neon green/cyan scheme
+- **Replay engine**: Streams CIC-DDoS2019 flows at 1x/10x/100x/1000x with dataset looping
+- **Threat aggregator**: AbuseIPDB, FireHOL L1-3, Feodo Tracker, Emerging Threats with CIDR expansion and deduplication
+- **Stats accumulator**: Sliding-window throughput, per-IP tracking, SQLite persistence
+- **Property-based testing**: 17 Hypothesis properties validating system correctness
+- **270 tests total**: 142 original + 128 new, full backward compatibility
+- **Changelog page**: Terminal-style `/changelog` route documenting project history
 
-**API Routes**
-- `POST /predict`: network flow classification (returns Benign/DDoS + probability)
-- `GET /events`: Server-Sent Events stream with 30s heartbeat
-- `GET /api/attacks`: all attack records for initial globe population
-- `GET /api/stats`: dashboard statistics (total IPs, countries, attacks/hour)
-- `GET /api/timeline`: hourly attack counts (24h)
-- `GET /health`: app status, model loaded state, DB record count
+## [1.9.0] — 2025-08-25
 
-**Frontend Dashboard**
-- Full-screen 3D globe (Globe.gl) with night-Earth texture and neon green atmosphere
-- Real-time attack markers and animated arcs (source → target) with fade-out
-- Statistics panel overlay (top-left)
-- Live event feed (top-right, max 50 items)
-- Timeline bar chart (bottom, 24h hourly buckets)
-- Marker click tooltips (IP, country, city, ISP, last-seen)
-- Auto-rotation when idle (10s timeout)
-- Cyberpunk theme: pitch-black (#000000), neon green (#00FF41), JetBrains Mono
+### Frontend Dashboard Redesign
 
-**Application Wiring**
-- FastAPI app with startup/shutdown lifecycle (DB init, model load, APScheduler)
-- APScheduler for periodic threat feed refresh (configurable interval)
-- Global exception handler (500 JSON responses)
-- Graceful degradation: dashboard works without trained model
+- Redesigned `index.html` as 6-panel CSS Grid layout
+- CRT effects: scanlines, phosphor glow, flicker animation
+- JetBrains Mono typeface with neon green/cyan color scheme
+- Responsive breakpoint at 1024px with stacked layout
+- Attack log terminal with 200-entry FIFO and blinking cursor
+- Replay controls with start/stop buttons and speed selector
 
-**Testing**
-- 142 tests total (unit + property-based)
-- 15 correctness properties validated via Hypothesis (100 examples each)
-- Covers: preprocessing, features, training, prediction, geolocation, database, event bus, SSE
+## [1.8.0] — 2025-08-18
 
-**Configuration**
-- `config.py` loading from `.env` with sensible defaults
-- `.env.example` with documented configuration options
+### API Routes and Service Integration
 
-### Known Issues
-- XGBoost requires `n_jobs=1` on Python 3.14 (deadlocks with parallel threading)
-- FireHOL level1 blocklist is mostly CIDRs; individual IP yield is low — consider adding level2/level3
-- Starlette 1.3.x changed `TemplateResponse` API — uses keyword args (`name=`, `request=`)
+- `POST /api/replay/start`, `POST /api/replay/stop`, `GET /api/replay/status`
+- `GET /api/model-stats`, `GET /api/top-attackers`, `GET /api/attack-types`
+- Service initialization in `main.py` with graceful lifecycle management
+- APScheduler for periodic threat refresh and stats persistence
+- All v1 endpoints preserved — zero breaking changes
+
+## [1.7.0] — 2025-08-11
+
+### Replay Engine and Enhanced EventBus
+
+- `ReplayEngine`: Streams CIC-DDoS2019 flows at configurable speeds with rate control
+- Dataset looping with `loops_completed` counter
+- `EventBus`: Bounded queue with drop-oldest overflow policy
+- Enhanced SSE events with 13 fields + backward-compatible legacy format
+
+## [1.6.0] — 2025-08-04
+
+### Threat Aggregator — Multi-Source Intelligence
+
+- `ThreatAggregator`: Fetches from AbuseIPDB, FireHOL L1-3, Feodo Tracker, Emerging Threats
+- CIDR expansion for /24+ ranges (samples 5-10 IPs per range)
+- Deduplication retaining highest confidence per unique IP
+- Graceful failure handling — skip failed sources, continue with rest
+
+## [1.5.0] — 2025-07-28
+
+### Stats Accumulator and Persistence
+
+- `StatsAccumulator`: Sliding 60s window for predictions/sec
+- Per-IP attacker tracking with top-20 ranked output
+- Per-attack-type count breakdown
+- SQLite persistence and restore across restarts
+
+## [1.4.0] — 2025-07-14
+
+### Multi-Class XGBoost Classifier
+
+- Retrained from binary to 12-class on CIC-DDoS2019 (SYN, UDP, DNS, HTTP, LDAP, NTP, MSSQL, NetBIOS, SSDP, TFTP, UDPLag, WebDDoS)
+- Returns confidence scores, classification time, top 3 features
+- Graceful degraded mode when model files are missing
+
+## [1.3.0] — 2025-06-30
+
+### Geographic Coordinate Pools
+
+- 32 countries across all continents with 3-5 coordinate pairs each
+- Weighted selection favoring botnet-heavy regions
+- Attack-type regional bias for realistic source distribution
+- Configurable target coordinates via environment variables
+
+## [1.0.0] — 2025-05-15
+
+### Initial Release — Binary DDoS Detection Globe
+
+- FastAPI backend with SQLite storage and SSE event streaming
+- Binary XGBoost classifier (Benign vs DDoS) on CIC-DDoS2019
+- Globe.gl 3D visualization with animated attack arcs
+- Geolocation service for IP → coordinates resolution
+- FireHOL Level 1 threat feed integration
+- 142 passing tests with property-based testing (Hypothesis)
+
+## [0.0.0] — 2025-03-01
+
+### Project Inception
+
+- Idea conceived: real-time DDoS attack visualization on a 3D globe
+- Objective: showcase ML classification with live threat intelligence
+- Tech stack selected: Python, FastAPI, XGBoost, Globe.gl, CIC-DDoS2019
+- Repository initialized

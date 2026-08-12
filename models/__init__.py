@@ -9,6 +9,18 @@ from models.schemas import (
     ModelMetadata,
     PredictRequest,
     PredictResponse,
+    # V2 models
+    AttackType,
+    ATTACK_TYPE_INDEX,
+    ATTACK_TYPE_COLORS,
+    confidence_to_severity,
+    ClassificationResult,
+    FeatureImportance,
+    EnhancedAttackEvent,
+    ReplayStatusResponse,
+    ModelStatsResponse,
+    TopAttackerEntry,
+    ThreatIP,
 )
 
 __all__ = [
@@ -20,4 +32,16 @@ __all__ = [
     "ModelMetadata",
     "PredictRequest",
     "PredictResponse",
+    # V2 models
+    "AttackType",
+    "ATTACK_TYPE_INDEX",
+    "ATTACK_TYPE_COLORS",
+    "confidence_to_severity",
+    "ClassificationResult",
+    "FeatureImportance",
+    "EnhancedAttackEvent",
+    "ReplayStatusResponse",
+    "ModelStatsResponse",
+    "TopAttackerEntry",
+    "ThreatIP",
 ]

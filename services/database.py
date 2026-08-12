@@ -31,6 +31,29 @@ _CREATE_INDEX_COUNTRY_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_attacks_country ON attacks(country);"
 )
 
+# --- v2 schema extensions ---
+
+_CREATE_STATS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS stats (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+_CREATE_ATTACKER_COUNTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS attacker_counts (
+    ip_address TEXT PRIMARY KEY,
+    country TEXT,
+    attack_count INTEGER DEFAULT 0,
+    last_seen TEXT NOT NULL
+);
+"""
+
+_CREATE_INDEX_ATTACKER_COUNT_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_attacker_count ON attacker_counts(attack_count DESC);"
+)
+
 _UPSERT_SQL = """
 INSERT INTO attacks (ip_address, latitude, longitude, country, city, isp, threat_source, first_seen, last_seen)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -70,14 +93,41 @@ class DatabaseService:
         self._conn: aiosqlite.Connection | None = None
 
     async def initialize(self) -> None:
-        """Open connection, create attacks table if not exists."""
+        """Open connection, create attacks table if not exists, run v2 migrations."""
         self._conn = await aiosqlite.connect(self.db_path)
         # Enable WAL mode for better concurrent read performance
         await self._conn.execute("PRAGMA journal_mode=WAL;")
         await self._conn.execute(_CREATE_TABLE_SQL)
         await self._conn.execute(_CREATE_INDEX_LAST_SEEN_SQL)
         await self._conn.execute(_CREATE_INDEX_COUNTRY_SQL)
+
+        # v2 schema extensions
+        await self._conn.execute(_CREATE_STATS_TABLE_SQL)
+        await self._conn.execute(_CREATE_ATTACKER_COUNTS_TABLE_SQL)
+        await self._conn.execute(_CREATE_INDEX_ATTACKER_COUNT_SQL)
+        await self._migrate_attacks_columns()
+
         await self._conn.commit()
+
+    async def _migrate_attacks_columns(self) -> None:
+        """Add v2 columns to attacks table if they don't already exist."""
+        assert self._conn is not None
+        cursor = await self._conn.execute("PRAGMA table_info(attacks);")
+        rows = await cursor.fetchall()
+        existing_columns = {row[1] for row in rows}
+
+        if "attack_type" not in existing_columns:
+            await self._conn.execute(
+                "ALTER TABLE attacks ADD COLUMN attack_type TEXT DEFAULT NULL;"
+            )
+        if "confidence" not in existing_columns:
+            await self._conn.execute(
+                "ALTER TABLE attacks ADD COLUMN confidence REAL DEFAULT NULL;"
+            )
+        if "source_channel" not in existing_columns:
+            await self._conn.execute(
+                "ALTER TABLE attacks ADD COLUMN source_channel TEXT DEFAULT 'live';"
+            )
 
     async def upsert_attack(self, record: AttackRecord) -> None:
         """INSERT or UPDATE last_seen for existing IP (ON CONFLICT)."""

@@ -51,11 +51,17 @@ async def health_check(request: Request) -> dict:
     model_service = _get_model_service(request)
     db = _get_db(request)
 
+    # Consider either v1 binary model or v2 multi-class model as "loaded"
+    multi_class = getattr(request.app.state, "multi_class_classifier", None)
+    any_model_loaded = model_service.is_loaded or (
+        multi_class is not None and multi_class.is_loaded
+    )
+
     stats = await db.get_stats()
     total_records = stats.get("total_ips", 0)
 
     return {
-        "status": "ok" if model_service.is_loaded else "degraded",
-        "model_loaded": model_service.is_loaded,
+        "status": "ok" if any_model_loaded else "degraded",
+        "model_loaded": any_model_loaded,
         "database_records": total_records,
     }

@@ -1,80 +1,313 @@
 /**
- * Globe.gl initialization and SSE client for the DDoS Attack Tracking Map.
- * Renders attack source markers, animated arcs, live statistics, and timeline chart.
+ * Enhanced Globe.gl visualization for the DDoS Threat Intelligence Center (v2).
+ *
+ * Features:
+ *  - Color-coded arcs by attack type (12 types mapped to 6 color groups)
+ *  - Impact ring animations at target coordinates on arc arrival
+ *  - Hexagonal-bin heat overlay updated every 5 seconds
+ *  - 200-arc FIFO cap with oldest eviction
+ *  - Arc lifecycle: 2000ms flight + 500ms fade
+ *  - Live vs replay arc differentiation (live = brighter, "LIVE" label)
+ *  - pointsMerge(true) for static markers
+ *
+ * Exposes window.GlobeManager with addArc(event) for SSE consumer (task 13.2).
+ *
+ * Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 15.1, 15.4
  */
 (function () {
     'use strict';
 
-    // --- Configuration ---
-    const ACCENT = '#00FF41';
-    const ACCENT_DIM = 'rgba(0, 255, 65, 0.6)';
-    const TARGET_LAT = 40.7128;   // Default target (NYC)
-    const TARGET_LNG = -74.0060;
-    const ARC_LIFETIME_MS = 4000;
-    const IDLE_TIMEOUT_MS = 10000;
-    const AUTO_ROTATE_SPEED = 0.3; // degrees per frame
+    // =========================================================================
+    // ATTACK TYPE COLOR MAPPING
+    // =========================================================================
 
-    // --- State ---
-    let pointData = [];
-    let arcData = [];
+    const ATTACK_TYPE_COLORS = {
+        'SYN Flood': '#FF0040',        // red
+        'UDP Flood': '#FF8C00',        // orange
+        'DNS Amplification': '#9B59B6', // purple
+        'HTTP Flood': '#FFD700',       // yellow
+        'LDAP': '#00E5FF',             // cyan (reflection)
+        'NTP': '#00E5FF',              // cyan (reflection)
+        'MSSQL': '#00E5FF',            // cyan (reflection)
+        'NetBIOS': '#00FF41',          // green (other)
+        'SSDP': '#00FF41',             // green (other)
+        'TFTP': '#00FF41',             // green (other)
+        'UDPLag': '#00FF41',           // green (other)
+        'WebDDoS': '#FFD700'           // yellow
+    };
+
+    const DEFAULT_COLOR = '#00FF41';
+
+    // =========================================================================
+    // CONFIGURATION
+    // =========================================================================
+
+    const MAX_ACTIVE_ARCS = 200;
+    const ARC_FLIGHT_MS = 2000;
+    const ARC_FADE_MS = 500;
+    const ARC_TOTAL_LIFETIME_MS = ARC_FLIGHT_MS + ARC_FADE_MS;
+    const HEX_UPDATE_INTERVAL_MS = 5000;
+    const TARGET_LAT = 40.7128;
+    const TARGET_LNG = -74.0060;
+    const IDLE_TIMEOUT_MS = 10000;
+    const AUTO_ROTATE_SPEED = 0.3;
+
+    // =========================================================================
+    // STATE
+    // =========================================================================
+
     let globe = null;
+    let activeArcs = [];
+    let impactRings = [];
+    let allAttackPoints = [];
     let idleTimer = null;
     let isAutoRotating = false;
+    let hexUpdateTimer = null;
 
-    // --- DOM references ---
-    const container = document.getElementById('globe-container');
-    const modelNotice = document.getElementById('model-notice');
-    const totalIpsEl = document.getElementById('total-ips');
-    const countriesEl = document.getElementById('countries');
-    const attacksLastHourEl = document.getElementById('attacks-last-hour');
-    const latestTimestampEl = document.getElementById('latest-timestamp');
-    const timelineBarsEl = document.querySelector('#timeline-chart .timeline-bars');
-    const feedListEl = document.querySelector('#event-feed .feed-list');
+    // =========================================================================
+    // DOM
+    // =========================================================================
 
-    // --- Globe.gl Initialization ---
+    let container = null;
+
+    // =========================================================================
+    // GLOBE INITIALIZATION
+    // =========================================================================
+
     function initGlobe() {
+        if (!container) {
+            console.error('[globe] #globe-container not found');
+            return;
+        }
+
+        if (typeof Globe === 'undefined') {
+            console.error('[globe] Globe.gl not loaded - Globe is undefined');
+            return;
+        }
+
+        // Use the globe panel's actual dimensions (not the container's min-height)
+        var panel = container.closest('.globe-panel') || container;
+        var width = panel.clientWidth || 600;
+        var height = panel.clientHeight || 400;
+        console.log('[globe] Initializing globe:', width, 'x', height);
+
         globe = Globe()
-            .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
-            .backgroundColor('#000000')
+            .width(width)
+            .height(height)
+            .globeImageUrl('//unpkg.com/three-globe/example/img/earth-dark.jpg')
+            .backgroundColor('#0a0f0a')
             .showAtmosphere(true)
-            .atmosphereColor(ACCENT_DIM)
+            .atmosphereColor('#00FF41')
             .atmosphereAltitude(0.15)
-            // Point layer (attack sources)
-            .pointsData(pointData)
-            .pointLat('lat')
-            .pointLng('lng')
-            .pointColor(() => ACCENT)
-            .pointAltitude(0.01)
-            .pointRadius('size')
-            .pointsMerge(false)
-            // Arc layer (attack animations)
-            .arcsData(arcData)
+            // --- Arcs layer (attack trajectories) ---
+            .arcsData(activeArcs)
             .arcStartLat('startLat')
             .arcStartLng('startLng')
             .arcEndLat('endLat')
             .arcEndLng('endLng')
             .arcColor('color')
+            .arcStroke(0.5)
             .arcDashLength(0.4)
             .arcDashGap(0.2)
             .arcDashAnimateTime(1500)
-            .arcStroke(0.5)
-            // Label/tooltip on click
-            .onPointClick(handlePointClick)
+            .arcAltitudeAutoScale(0.3)
+            .arcLabel(function (d) {
+                return d.source_channel === 'live'
+                    ? 'LIVE: ' + d.attack_type
+                    : d.attack_type;
+            })
+            // --- Rings layer (impact effects at target) ---
+            .ringsData(impactRings)
+            .ringLat('lat')
+            .ringLng('lng')
+            .ringColor(function () {
+                return function (t) {
+                    return 'rgba(0, 255, 65, ' + (1 - t) + ')';
+                };
+            })
+            .ringMaxRadius(3)
+            .ringPropagationSpeed(2)
+            .ringRepeatPeriod(0)
+            // --- Hex-bin heat layer ---
+            .hexBinPointsData(allAttackPoints)
+            .hexBinPointLat('lat')
+            .hexBinPointLng('lng')
+            .hexBinPointWeight('weight')
+            .hexBinResolution(3)
+            .hexAltitude(function (d) { return Math.min(d.sumWeight * 0.006, 0.5); })
+            .hexTopColor(function (d) { return hexWeightColor(d.sumWeight); })
+            .hexSideColor(function (d) { return hexWeightColor(d.sumWeight); })
+            // --- Performance ---
+            .pointsMerge(true)
             (container);
 
-        // Set initial camera position
-        globe.pointOfView({ lat: 30, lng: 0, altitude: 2.5 });
+        // Initial camera position — zoom out to fit panel
+        globe.pointOfView({ lat: 30, lng: 0, altitude: 3.0 });
 
-        // Start auto-rotation
+        // Handle window resize
+        window.addEventListener('resize', function () {
+            if (globe && container) {
+                var p = container.closest('.globe-panel') || container;
+                var w = p.clientWidth || 600;
+                var h = p.clientHeight || 400;
+                globe.width(w).height(h);
+            }
+        });
+
+        // Auto-rotation
         startAutoRotation();
-
-        // Listen for user interaction to pause auto-rotation
         container.addEventListener('mousedown', resetIdleTimer);
         container.addEventListener('wheel', resetIdleTimer);
         container.addEventListener('touchstart', resetIdleTimer);
+
+        // Periodic hex-bin refresh every 5 seconds
+        hexUpdateTimer = setInterval(refreshHexLayer, HEX_UPDATE_INTERVAL_MS);
     }
 
-    // --- Auto-Rotation ---
+    // =========================================================================
+    // HEX-BIN HEAT LAYER
+    // =========================================================================
+
+    function hexWeightColor(weight) {
+        if (weight > 20) return '#FF0040';
+        if (weight > 10) return '#FF8C00';
+        if (weight > 5) return '#FFD700';
+        if (weight > 2) return '#7FFF00';
+        return '#00FF41';
+    }
+
+    function refreshHexLayer() {
+        if (globe) {
+            // Trigger re-render with current accumulated points
+            globe.hexBinPointsData(allAttackPoints);
+        }
+    }
+
+    // =========================================================================
+    // ARC MANAGEMENT — 200-CAP FIFO
+    // =========================================================================
+
+    /**
+     * Add an attack arc to the globe visualization.
+     * This is the primary API called by the SSE consumer (task 13.2).
+     *
+     * @param {Object} event - Enhanced attack event from SSE
+     * @param {number} event.latitude - Source latitude
+     * @param {number} event.longitude - Source longitude
+     * @param {string} event.attack_type - One of 12 attack types
+     * @param {string} event.source_channel - "replay" or "live"
+     * @param {string} [event.ip_address] - Source IP address
+     * @param {number} [event.confidence] - Classification confidence 0-1
+     * @param {string} [event.timestamp] - ISO 8601 timestamp
+     */
+    function addArc(event) {
+        if (!globe) return;
+
+        // FIFO eviction: remove oldest arc(s) if at capacity
+        while (activeArcs.length >= MAX_ACTIVE_ARCS) {
+            var evicted = activeArcs.shift();
+            if (evicted._ringTimer) clearTimeout(evicted._ringTimer);
+            if (evicted._removeTimer) clearTimeout(evicted._removeTimer);
+        }
+
+        // Determine arc color based on attack type and source channel
+        var baseColor = ATTACK_TYPE_COLORS[event.attack_type] || DEFAULT_COLOR;
+        var arcColor;
+
+        if (event.source_channel === 'live') {
+            // Live arcs: brighter — use full-opacity triple for glow effect
+            arcColor = [baseColor, '#ffffff', baseColor];
+        } else {
+            // Replay arcs: standard brightness
+            arcColor = baseColor;
+        }
+
+        var arc = {
+            startLat: event.latitude,
+            startLng: event.longitude,
+            endLat: TARGET_LAT,
+            endLng: TARGET_LNG,
+            color: arcColor,
+            attack_type: event.attack_type || 'UNKNOWN',
+            source_channel: event.source_channel || 'replay',
+            _createdAt: Date.now(),
+            _ringTimer: null,
+            _removeTimer: null
+        };
+
+        activeArcs.push(arc);
+        globe.arcsData(activeArcs);
+
+        // Schedule impact ring at target after flight completes
+        arc._ringTimer = setTimeout(function () {
+            addImpactRing(TARGET_LAT, TARGET_LNG);
+        }, ARC_FLIGHT_MS);
+
+        // Schedule arc removal after full lifecycle (flight + fade)
+        arc._removeTimer = setTimeout(function () {
+            removeArc(arc);
+        }, ARC_TOTAL_LIFETIME_MS);
+
+        // Accumulate point for hex-bin heat layer (cap at 2000 to prevent lag)
+        allAttackPoints.push({
+            lat: event.latitude,
+            lng: event.longitude,
+            weight: 1
+        });
+        if (allAttackPoints.length > 2000) {
+            allAttackPoints.splice(0, allAttackPoints.length - 2000);
+        }
+    }
+
+    /**
+     * Remove a specific arc from the active set.
+     */
+    function removeArc(arc) {
+        var idx = activeArcs.indexOf(arc);
+        if (idx !== -1) {
+            activeArcs.splice(idx, 1);
+            if (globe) {
+                globe.arcsData(activeArcs);
+            }
+        }
+    }
+
+    // =========================================================================
+    // IMPACT RINGS
+    // =========================================================================
+
+    /**
+     * Add an expanding impact ring at the specified coordinates.
+     * Triggered when an arc's flight time elapses (arrives at target).
+     */
+    function addImpactRing(lat, lng) {
+        var ring = {
+            lat: lat,
+            lng: lng,
+            _createdAt: Date.now()
+        };
+
+        impactRings.push(ring);
+        if (globe) {
+            globe.ringsData(impactRings);
+        }
+
+        // Remove ring after propagation completes (~1500ms at speed 2, radius 3)
+        setTimeout(function () {
+            var idx = impactRings.indexOf(ring);
+            if (idx !== -1) {
+                impactRings.splice(idx, 1);
+                if (globe) {
+                    globe.ringsData(impactRings);
+                }
+            }
+        }, 1500);
+    }
+
+    // =========================================================================
+    // AUTO-ROTATION
+    // =========================================================================
+
     function startAutoRotation() {
         isAutoRotating = true;
         requestAnimationFrame(rotateGlobe);
@@ -86,8 +319,12 @@
 
     function rotateGlobe() {
         if (!isAutoRotating || !globe) return;
-        const pov = globe.pointOfView();
-        globe.pointOfView({ lat: pov.lat, lng: pov.lng + AUTO_ROTATE_SPEED, altitude: pov.altitude });
+        var pov = globe.pointOfView();
+        globe.pointOfView({
+            lat: pov.lat,
+            lng: pov.lng + AUTO_ROTATE_SPEED,
+            altitude: pov.altitude
+        });
         requestAnimationFrame(rotateGlobe);
     }
 
@@ -99,86 +336,17 @@
         }, IDLE_TIMEOUT_MS);
     }
 
-    // --- Tooltip ---
-    let tooltipEl = null;
-
-    function handlePointClick(point, event) {
-        // Remove existing tooltip
-        removeTooltip();
-
-        if (!point) return;
-
-        tooltipEl = document.createElement('div');
-        tooltipEl.className = 'globe-tooltip';
-        tooltipEl.innerHTML =
-            '<strong>IP:</strong> ' + escapeHtml(point.ip) + '<br>' +
-            '<strong>Country:</strong> ' + escapeHtml(point.country || '—') + '<br>' +
-            '<strong>City:</strong> ' + escapeHtml(point.city || '—') + '<br>' +
-            '<strong>ISP:</strong> ' + escapeHtml(point.isp || '—') + '<br>' +
-            '<strong>Last seen:</strong> ' + escapeHtml(point.lastSeen || '—');
-
-        tooltipEl.style.position = 'fixed';
-        tooltipEl.style.left = (event.clientX + 12) + 'px';
-        tooltipEl.style.top = (event.clientY + 12) + 'px';
-        tooltipEl.style.zIndex = '50';
-        document.body.appendChild(tooltipEl);
-
-        // Remove on next click anywhere
-        setTimeout(function () {
-            document.addEventListener('click', removeTooltip, { once: true });
-        }, 50);
-    }
-
-    function removeTooltip() {
-        if (tooltipEl && tooltipEl.parentNode) {
-            tooltipEl.parentNode.removeChild(tooltipEl);
-            tooltipEl = null;
-        }
-    }
-
-    // --- Data Fetching ---
-    async function fetchInitialAttacks() {
-        try {
-            const resp = await fetch('/api/attacks');
-            if (!resp.ok) return;
-            const attacks = await resp.json();
-            attacks.forEach(function (attack) {
-                addPoint(attack);
-            });
-            globe.pointsData(pointData);
-        } catch (e) {
-            console.error('[globe] Failed to fetch initial attacks:', e);
-        }
-    }
-
-    async function fetchStats() {
-        try {
-            const resp = await fetch('/api/stats');
-            if (!resp.ok) return;
-            const stats = await resp.json();
-            renderStats(stats);
-        } catch (e) {
-            console.error('[globe] Failed to fetch stats:', e);
-        }
-    }
-
-    async function fetchTimeline() {
-        try {
-            const resp = await fetch('/api/timeline');
-            if (!resp.ok) return;
-            const timeline = await resp.json();
-            renderTimeline(timeline);
-        } catch (e) {
-            console.error('[globe] Failed to fetch timeline:', e);
-        }
-    }
+    // =========================================================================
+    // HEALTH CHECK
+    // =========================================================================
 
     async function checkHealth() {
         try {
-            const resp = await fetch('/health');
+            var resp = await fetch('/health');
             if (!resp.ok) return;
-            const health = await resp.json();
-            if (!health.model_loaded) {
+            var health = await resp.json();
+            var modelNotice = document.getElementById('model-notice');
+            if (modelNotice && !health.model_loaded) {
                 modelNotice.removeAttribute('hidden');
             }
         } catch (e) {
@@ -186,158 +354,63 @@
         }
     }
 
-    // --- SSE Connection ---
-    function connectSSE() {
-        const evtSource = new EventSource('/events');
+    // =========================================================================
+    // CLEANUP
+    // =========================================================================
 
-        evtSource.addEventListener('attack', function (e) {
-            try {
-                const data = JSON.parse(e.data);
-                handleNewAttack(data);
-            } catch (err) {
-                console.error('[globe] SSE parse error:', err);
-            }
+    function destroy() {
+        if (hexUpdateTimer) {
+            clearInterval(hexUpdateTimer);
+            hexUpdateTimer = null;
+        }
+        clearTimeout(idleTimer);
+        stopAutoRotation();
+
+        // Clear all pending timers on arcs
+        activeArcs.forEach(function (arc) {
+            if (arc._ringTimer) clearTimeout(arc._ringTimer);
+            if (arc._removeTimer) clearTimeout(arc._removeTimer);
         });
 
-        evtSource.onerror = function () {
-            console.warn('[globe] SSE connection error, will auto-reconnect');
-        };
+        activeArcs = [];
+        impactRings = [];
+        allAttackPoints = [];
     }
 
-    // --- Event Handling ---
-    function handleNewAttack(data) {
-        // Add point marker
-        addPoint(data);
-        globe.pointsData(pointData);
+    // =========================================================================
+    // PUBLIC API (exposed on window for SSE consumer and other modules)
+    // =========================================================================
 
-        // Add arc with fade-out
-        addArc(data);
+    window.GlobeManager = {
+        /** Add an attack arc — primary interface for SSE consumer */
+        addArc: addArc,
 
-        // Update feed
-        addFeedItem(data);
+        /** Get current count of active arcs */
+        getActiveArcCount: function () { return activeArcs.length; },
 
-        // Refresh stats and timeline
-        fetchStats();
-        fetchTimeline();
-    }
+        /** Get total accumulated heat points */
+        getHeatPointCount: function () { return allAttackPoints.length; },
 
-    function addPoint(attack) {
-        // Skip if already exists
-        const existing = pointData.find(function (p) { return p.ip === attack.ip_address; });
-        if (existing) {
-            existing.lastSeen = attack.last_seen || attack.timestamp || existing.lastSeen;
-            return;
-        }
+        /** Tear down the globe and clear all timers */
+        destroy: destroy,
 
-        pointData.push({
-            lat: attack.latitude,
-            lng: attack.longitude,
-            ip: attack.ip_address,
-            country: attack.country || null,
-            city: attack.city || null,
-            isp: attack.isp || null,
-            lastSeen: attack.last_seen || attack.timestamp || '',
-            size: 0.5
-        });
-    }
+        /** Constants exposed for other modules */
+        ATTACK_TYPE_COLORS: ATTACK_TYPE_COLORS,
+        MAX_ACTIVE_ARCS: MAX_ACTIVE_ARCS,
+        TARGET_LAT: TARGET_LAT,
+        TARGET_LNG: TARGET_LNG
+    };
 
-    function addArc(attack) {
-        const arc = {
-            startLat: attack.latitude,
-            startLng: attack.longitude,
-            endLat: TARGET_LAT,
-            endLng: TARGET_LNG,
-            color: ACCENT
-        };
-        arcData.push(arc);
-        globe.arcsData(arcData);
+    // =========================================================================
+    // BOOTSTRAP
+    // =========================================================================
 
-        // Remove arc after animation completes (fade-out)
-        setTimeout(function () {
-            const idx = arcData.indexOf(arc);
-            if (idx !== -1) {
-                arcData.splice(idx, 1);
-                globe.arcsData(arcData);
-            }
-        }, ARC_LIFETIME_MS);
-    }
-
-    // --- Render Functions ---
-    function renderStats(stats) {
-        totalIpsEl.textContent = stats.total_ips != null ? stats.total_ips : '0';
-        countriesEl.textContent = stats.countries != null ? stats.countries : '0';
-        attacksLastHourEl.textContent = stats.attacks_last_hour != null ? stats.attacks_last_hour : '0';
-        latestTimestampEl.textContent = stats.latest_timestamp
-            ? formatTimestamp(stats.latest_timestamp)
-            : '—';
-    }
-
-    function renderTimeline(timeline) {
-        // Clear existing bars
-        timelineBarsEl.innerHTML = '';
-
-        if (!timeline || timeline.length === 0) return;
-
-        const maxCount = Math.max.apply(null, timeline.map(function (b) { return b.count; }));
-        const barHeight = 80; // matches CSS .timeline-bars height
-
-        timeline.forEach(function (bucket) {
-            const bar = document.createElement('div');
-            bar.className = 'bar';
-            const height = maxCount > 0 ? (bucket.count / maxCount) * barHeight : 0;
-            bar.style.height = Math.max(height, 2) + 'px';
-            bar.title = bucket.hour + ': ' + bucket.count + ' attacks';
-            timelineBarsEl.appendChild(bar);
-        });
-    }
-
-    function addFeedItem(data) {
-        const li = document.createElement('li');
-        const ts = data.timestamp ? formatTimestamp(data.timestamp) : 'now';
-        li.textContent = data.ip_address + ' — ' + (data.country || '??') + ' [' + ts + ']';
-
-        // Insert at top
-        if (feedListEl.firstChild) {
-            feedListEl.insertBefore(li, feedListEl.firstChild);
-        } else {
-            feedListEl.appendChild(li);
-        }
-
-        // Keep feed to max 50 items
-        while (feedListEl.children.length > 50) {
-            feedListEl.removeChild(feedListEl.lastChild);
-        }
-    }
-
-    // --- Utilities ---
-    function formatTimestamp(isoStr) {
-        try {
-            const d = new Date(isoStr);
-            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        } catch (_) {
-            return isoStr;
-        }
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-    }
-
-    // --- Bootstrap ---
-    async function init() {
+    function init() {
+        container = document.getElementById('globe-container');
         initGlobe();
-        await checkHealth();
-        await fetchInitialAttacks();
-        await fetchStats();
-        await fetchTimeline();
-        connectSSE();
+        checkHealth();
     }
 
-    // Wait for Globe.gl to be available
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {

@@ -3,65 +3,157 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DDoS Attack Tracking Map</title>
+    <title>DDoS Threat Intelligence Center</title>
 
     <!-- JetBrains Mono Font -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
 
     <!-- Application Styles -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <!-- Globe.gl 3D Container -->
-    <div id="globe-container"></div>
-
-    <!-- Model Unavailable Notice (hidden by default) -->
-    <div id="model-notice" class="model-notice" hidden>
-        <span class="notice-icon">⚠</span>
-        <span>ML prediction model unavailable — threat feed visualization only</span>
-    </div>
-
-    <!-- Statistics Panel Overlay -->
-    <div id="stats-panel" class="stats-panel">
-        <h2 class="stats-title">Attack Statistics</h2>
-        <div class="stats-grid">
-            <div class="stat-item">
-                <span class="stat-label">Total IPs</span>
-                <span id="total-ips" class="stat-value">0</span>
+    <!-- Dashboard Header -->
+    <header id="dashboard-header" class="dashboard-header">
+        <h1 class="header-title glow-text">DDOS THREAT INTELLIGENCE CENTER</h1>
+        <div class="header-indicators">
+            <div class="indicator replay-indicator" id="replay-indicator">
+                <span class="indicator-label">DATASET REPLAY</span>
+                <span class="indicator-speed" id="replay-speed">10x</span>
+                <span class="indicator-status" id="replay-status">STOPPED</span>
             </div>
-            <div class="stat-item">
-                <span class="stat-label">Countries</span>
-                <span id="countries" class="stat-value">0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Attacks (1h)</span>
-                <span id="attacks-last-hour" class="stat-value">0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Latest</span>
-                <span id="latest-timestamp" class="stat-value">—</span>
+            <div class="indicator live-indicator" id="live-indicator">
+                <span class="indicator-label">LIVE</span>
+                <span class="indicator-dot live-dot"></span>
             </div>
         </div>
-    </div>
+        <div class="header-controls">
+            <a href="/changelog" class="control-btn changelog-btn" title="Changelog">&#9776;</a>
+            <button id="replay-start-btn" class="control-btn" title="Start Replay">&#9654;</button>
+            <button id="replay-stop-btn" class="control-btn" title="Stop Replay">&#9632;</button>
+            <select id="speed-selector" class="speed-select">
+                <option value="1">1x</option>
+                <option value="10" selected>10x</option>
+                <option value="100">100x</option>
+                <option value="1000">1000x</option>
+            </select>
+        </div>
+    </header>
 
-    <!-- Timeline Chart Container -->
-    <div id="timeline-chart" class="timeline-chart">
-        <h3 class="timeline-title">Attack Timeline (24h)</h3>
-        <div class="timeline-bars"></div>
-    </div>
+    <!-- Main Dashboard Grid -->
+    <main class="dashboard">
+        <!-- 3D Globe Panel (primary, ~60% width) -->
+        <section id="globe-panel" class="panel globe-panel">
+            <div id="globe-container" class="globe-container"></div>
+            <!-- Model Unavailable Notice (hidden by default) -->
+            <div id="model-notice" class="model-notice" hidden>
+                <span class="notice-icon">&#9888;</span>
+                <span>ML prediction model unavailable</span>
+            </div>
+        </section>
 
-    <!-- Live Event Feed Panel -->
-    <div id="event-feed" class="event-feed">
-        <h3 class="feed-title">Live Feed</h3>
-        <ul class="feed-list"></ul>
-    </div>
+        <!-- Stats Grid Panel (2x3 metric cards) -->
+        <section id="stats-grid" class="panel stats-grid">
+            <div class="stat-card">
+                <span class="stat-label">Attacks Classified</span>
+                <span class="stat-value" id="stat-attacks">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Active Sources</span>
+                <span class="stat-value" id="stat-sources">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Countries</span>
+                <span class="stat-value" id="stat-countries">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">F1-Score</span>
+                <span class="stat-value" id="stat-f1">0.00</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Threat Level</span>
+                <span class="stat-value" id="stat-threat">LOW</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Pred/s</span>
+                <span class="stat-value" id="stat-pps">0</span>
+            </div>
+        </section>
 
-    <!-- Globe.gl Library (CDN) -->
-    <script src="https://unpkg.com/globe.gl"></script>
+        <!-- Attack Log Terminal Panel -->
+        <section id="attack-log" class="panel attack-log">
+            <div class="panel-header">
+                <span class="panel-title glow-text">ATTACK LOG</span>
+                <span class="entry-count" id="log-count">0 entries</span>
+            </div>
+            <div class="log-entries" id="log-entries">
+                <!-- Log entries appended here by JS -->
+            </div>
+        </section>
 
-    <!-- Application Script -->
+        <!-- Timeline Panel (area chart) -->
+        <section id="timeline-panel" class="panel timeline-panel">
+            <div class="panel-header">
+                <span class="panel-title glow-text">TIMELINE (60 min)</span>
+            </div>
+            <canvas id="timeline-canvas"></canvas>
+        </section>
+
+        <!-- Top Attackers Panel -->
+        <section id="top-attackers" class="panel top-attackers">
+            <div class="panel-header">
+                <span class="panel-title glow-text">TOP ATTACKERS</span>
+            </div>
+            <table class="attackers-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>IP</th>
+                        <th>Country</th>
+                        <th>Count</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody id="attackers-tbody">
+                    <!-- Rows populated by JS -->
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Model Performance Card -->
+        <section id="model-card" class="panel model-card">
+            <div class="model-info">
+                <span class="model-label">MODEL</span>
+                <span class="model-value" id="model-type">XGBoost</span>
+                <span class="model-separator">|</span>
+                <span class="model-label">F1</span>
+                <span class="model-value" id="model-f1">—</span>
+                <span class="model-separator">|</span>
+                <span class="model-label">Precision</span>
+                <span class="model-value" id="model-precision">—</span>
+                <span class="model-separator">|</span>
+                <span class="model-label">Recall</span>
+                <span class="model-value" id="model-recall">—</span>
+                <span class="model-separator">|</span>
+                <span class="model-label">Dataset</span>
+                <span class="model-value">CIC-DDoS2019</span>
+            </div>
+            <div class="attack-type-legend" id="attack-type-legend">
+                <!-- Legend items populated by JS -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Globe.gl Library (self-contained UMD build with Three.js bundled) -->
+    <script src="https://unpkg.com/globe.gl@2.41.2/dist/globe.gl.min.js"></script>
+    <!-- Chart.js for timeline -->
+    <script src="https://unpkg.com/chart.js@4"></script>
+
+    <!-- Application Scripts -->
     <script src="/static/js/globe.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/panels.js"></script>
+    <script src="/static/js/controls.js"></script>
 </body>
 </html>

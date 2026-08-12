@@ -1,128 +1,167 @@
 # Live DDoS Attack Tracking Map
 
-Real-time 3D globe visualization of DDoS attack sources, powered by ML classification and live threat intelligence feeds.
+A multi-panel SOC War Room command center that visualizes DDoS attacks on a 3D globe in real-time. Powered by a 12-class XGBoost classifier trained on the CIC-DDoS2019 dataset and live threat intelligence from multiple feeds.
 
 ![Python](https://img.shields.io/badge/python-3.12+-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green)
+![Tests](https://img.shields.io/badge/tests-270%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-gray)
 
-## What it does
+## Overview
 
-- Trains a binary classifier (Random Forest / XGBoost) on the CIC-DDoS2019 dataset to detect DDoS traffic
-- Ingests live malicious IPs from FireHOL blocklists
-- Geolocates attack sources via ip-api.com
-- Renders an interactive 3D globe (Globe.gl) with animated attack arcs and markers
-- Streams updates in real time via Server-Sent Events
-- Dark cyberpunk aesthetic — pitch-black background, neon green accents, monospace typography
+The dashboard simultaneously streams two data channels:
+- **Historical Replay** — CIC-DDoS2019 network flows classified in real-time by the ML model at configurable speeds (1x–1000x)
+- **Live Threat Intelligence** — Aggregated from AbuseIPDB, FireHOL L1-3, Feodo Tracker, and Emerging Threats
+
+Six panels update simultaneously: 3D globe with color-coded attack arcs, real-time stats grid, scrolling terminal attack log, top attackers table, 60-minute timeline chart, and model performance card.
+
+## Features
+
+- **12-class DDoS classification** — SYN Flood, UDP Flood, DNS Amplification, HTTP Flood, LDAP, NTP, MSSQL, NetBIOS, SSDP, TFTP, UDPLag, WebDDoS
+- **3D Globe visualization** — Globe.gl with color-coded arcs, impact rings, hex-bin heat overlay, 200-arc FIFO cap
+- **CRT terminal aesthetic** — Scanlines, phosphor glow, flicker, JetBrains Mono, neon green/cyan
+- **Replay engine** — Streams historical flows at 10-50 events/sec with dataset looping
+- **Multi-source threat intel** — 4 feeds with CIDR expansion, deduplication, graceful failure handling
+- **Property-based testing** — 17 Hypothesis properties validating system correctness
+- **Full backward compatibility** — All original v1 endpoints preserved
 
 ## Quick Start
 
 ```bash
 # Clone and install
-git clone https://github.com/your-username/Live-DDoS-Attack-Tracking-Map.git
+git clone https://github.com/nooblancer/Live-DDoS-Attack-Tracking-Map.git
 cd Live-DDoS-Attack-Tracking-Map
 python -m venv .venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # Linux/Mac
 pip install -r requirements.txt
 
 # Configure
 cp .env.example .env
 # Edit .env if needed (defaults work out of the box)
 
-# Run the dashboard
+# Run
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000 — the globe loads immediately. The threat feed starts pulling IPs on a 5-minute interval. Attack markers and arcs appear as data flows in.
+Open http://127.0.0.1:8000 — click the ▶ button to start the replay engine.
 
-## Training the ML Model (Optional)
+## Training the ML Model
 
-The dashboard works without a trained model (threat feed visualization only). To enable the `/predict` endpoint:
+The app ships with a pre-trained model on synthetic data. To train on real CIC-DDoS2019:
 
 ```bash
 # Place CIC-DDoS2019 CSVs in:
 #   data/raw/01-12/  (training day)
 #   data/raw/03-11/  (test day)
 
-python -m ml.train
+# Train multi-class (12 attack types)
+python -m ml.train_multi_class
+
+# Or generate synthetic model for testing
+python -m ml.train_multi_class --synthetic
 ```
 
-This trains both Random Forest and XGBoost, picks the best F1-score model, and saves artifacts to `models/`.
+The training script handles memory-efficient chunked loading (50k rows/file), trains XGBoost with 300 estimators, and saves artifacts to `ml/models/multi_class/`.
 
 ## Project Structure
 
 ```
-├── main.py                  # FastAPI app, lifecycle, routes
-├── config.py                # Settings from .env
+├── main.py                          # FastAPI app, lifecycle, service init
+├── config.py                        # Settings from .env
 ├── ml/
-│   ├── preprocess.py        # Data loading and cleaning
-│   ├── features.py          # Feature selection and scaling
-│   ├── train.py             # Model training CLI
-│   └── sample_data.py       # Sample data generator
+│   ├── train_multi_class.py         # 12-class XGBoost training pipeline
+│   ├── train.py                     # Binary model training (v1)
+│   ├── preprocess.py                # Data loading and cleaning
+│   ├── features.py                  # Feature selection (46 features)
+│   └── models/multi_class/          # Trained model artifacts
 ├── services/
-│   ├── database.py          # SQLite async operations
-│   ├── event_bus.py         # In-process pub/sub for SSE
-│   ├── geolocation.py       # ip-api.com batch geolocation
-│   ├── model_service.py     # Model loading and inference
-│   └── threat_feed.py       # FireHOL blocklist fetching
+│   ├── replay_engine.py             # Historical flow replay at speed
+│   ├── multi_class_classifier.py    # 12-class XGBoost inference
+│   ├── threat_aggregator.py         # Multi-source threat intel
+│   ├── stats_accumulator.py         # Metrics tracking + persistence
+│   ├── geo_pools.py                 # Geographic coordinate assignment
+│   ├── event_bus.py                 # Bounded pub/sub for SSE
+│   ├── database.py                  # SQLite async operations
+│   ├── geolocation.py               # IP → coordinates resolution
+│   └── model_service.py             # Binary model service (v1)
 ├── routes/
-│   ├── predict.py           # POST /predict
-│   ├── events.py            # GET /events (SSE)
-│   └── api.py               # GET /api/attacks, /api/stats, /api/timeline
+│   ├── replay.py                    # POST /api/replay/start|stop
+│   ├── stats.py                     # GET /api/model-stats, top-attackers
+│   ├── predict.py                   # POST /predict
+│   ├── events.py                    # GET /events (SSE stream)
+│   └── api.py                       # GET /health, /api/attacks, etc.
 ├── templates/
-│   └── index.html           # Dashboard template
+│   ├── index.html                   # SOC dashboard
+│   └── changelog.html               # Terminal-style changelog
 ├── static/
-│   ├── js/globe.js          # Globe.gl + SSE client
-│   └── css/style.css        # Cyberpunk theme
-└── tests/                   # 142 tests (unit + property-based)
+│   ├── js/
+│   │   ├── globe.js                 # Globe.gl + arc management
+│   │   ├── dashboard.js             # SSE consumer + attack log
+│   │   ├── panels.js                # Stats grid, timeline, top attackers
+│   │   └── controls.js              # Replay controls, model card, legend
+│   └── css/style.css                # CRT terminal theme
+├── tests/                           # 270 tests (unit + property-based)
+└── models/schemas.py                # Pydantic models + attack type defs
 ```
 
 ## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | Dashboard (3D globe) |
-| GET | `/api/attacks` | All attack records |
+| GET | `/` | SOC dashboard |
+| GET | `/changelog` | Project changelog |
+| GET | `/events` | SSE stream (enhanced attack events) |
+| GET | `/health` | App status + model state |
+| GET | `/api/model-stats` | Model metrics + throughput |
+| GET | `/api/top-attackers` | Top 20 source IPs by count |
+| GET | `/api/attack-types` | Per-type classification counts |
+| GET | `/api/replay/status` | Replay state, speed, flows processed |
+| POST | `/api/replay/start` | Start replay (optional speed_multiplier) |
+| POST | `/api/replay/stop` | Stop replay |
+| POST | `/predict` | Classify a network flow |
+| GET | `/api/attacks` | All stored attack records |
 | GET | `/api/stats` | Dashboard statistics |
 | GET | `/api/timeline` | Hourly attack counts (24h) |
-| GET | `/events` | SSE stream (live attack events) |
-| GET | `/health` | App status, model state, DB count |
-| POST | `/predict` | Classify network flow features |
 
 ## Running Tests
 
 ```bash
-# All tests
-pytest tests/ -v
+# Full suite (270 tests, ~3 minutes)
+python -m pytest tests/ -q
 
-# Property-based tests only
-pytest tests/ -v -k "props"
+# Property-based tests only (17 files)
+python -m pytest tests/test_property_*.py -v
+
+# v1 regression tests
+python -m pytest tests/test_api.py tests/test_predict.py -q
 
 # With coverage
-pytest tests/ --cov=. --cov-report=html
+python -m pytest tests/ --cov=. --cov-report=html
 ```
-
-142 tests covering ML preprocessing, feature engineering, model evaluation, API endpoints, database operations, event bus, geolocation, and SSE delivery. Property-based tests use Hypothesis (100 examples each).
 
 ## Tech Stack
 
-- **Backend**: FastAPI, uvicorn, aiosqlite, APScheduler
-- **ML**: scikit-learn, XGBoost, pandas, NumPy
-- **Frontend**: Globe.gl (Three.js), vanilla JS, Server-Sent Events
-- **Testing**: pytest, Hypothesis (property-based testing)
-- **Data**: CIC-DDoS2019 dataset, FireHOL blocklist-ipsets
+| Layer | Technology |
+|-------|-----------|
+| Backend | FastAPI, uvicorn, aiosqlite, APScheduler, httpx |
+| ML | XGBoost, scikit-learn, pandas, NumPy |
+| Frontend | Globe.gl (Three.js), Chart.js, vanilla JS, SSE |
+| Testing | pytest, Hypothesis (property-based), pytest-asyncio |
+| Data | CIC-DDoS2019, FireHOL, AbuseIPDB, Feodo, Emerging Threats |
 
 ## Configuration
 
-See `.env.example` for all settings. Key options:
+See `.env.example` for all settings:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FEED_INTERVAL_SEC` | 300 | Threat feed refresh interval |
-| `GEO_BATCH_SIZE` | 50 | IPs per geolocation batch |
+| `FEED_INTERVAL_SEC` | 300 | v1 threat feed refresh interval |
+| `FIREHOL_INTERVAL` | 1800 | Threat aggregator refresh (seconds) |
+| `ABUSEIPDB_API_KEY` | — | AbuseIPDB API key (optional) |
+| `TARGET_LAT` / `TARGET_LON` | 39.04 / -77.49 | Defended network coordinates |
+| `STATS_PERSIST_INTERVAL` | 60 | Stats save interval (seconds) |
 | `DB_PATH` | `data/attacks.db` | SQLite database location |
-| `MODEL_PATH` | `models/ddos_model.joblib` | Trained model path |
 
 ## License
 
